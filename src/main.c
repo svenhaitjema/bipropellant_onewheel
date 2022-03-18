@@ -117,8 +117,8 @@ bool step_up = true;
 
 #define KP 2//0.32       
 #define KD 800//0.35//0.050     
-#define KP_THROTTLE 4//0.051//0.080 
-#define KI_THROTTLE 0.1//0.1 
+#define KP_THROTTLE 2//0.051//0.080 
+#define KI_THROTTLE 0//0.01//0.1 
 
 #define KP_POSITION 0.06  
 #define KD_POSITION 0.45  
@@ -200,7 +200,7 @@ float speedPIControl(float DT, int16_t input, int16_t setPoint,  float Kp, float
 
   //Serial.println(PID_errorSum);
 
-  output = Kp * error + Ki * speed_PID_errorSum * DT; // DT is in miliseconds...
+  output = (Kp * error) + (Ki * speed_PID_errorSum) * DT; // DT is in miliseconds...
   return (output);
 }
 
@@ -754,14 +754,15 @@ int main(void) {
 
 
         float speed_control_acceleration = speedPIControl(5, hub_speed_kmh, throttle, Kp_thr, Ki_thr);
+
         speed_control_acceleration = CLAMP(speed_control_acceleration, -FlashContent.HoverboardPWMLimit,FlashContent.HoverboardPWMLimit); // limited output // negative angle is nose up
         
-        #define SPEED_CONTROL_ACCELERATION_GAIN 0.01
-        #define THROTTLE_ANGLE_ERROR_GAIN 0.1
+        #define SPEED_CONTROL_ACCELERATION_GAIN -0.01
+        #define THROTTLE_ANGLE_ERROR_GAIN 0.01
         speed_control_acceleration = speed_control_acceleration * SPEED_CONTROL_ACCELERATION_GAIN;
  
         float desired_angle = 0;
-        
+        /*
         switch(drive_mode){
           case DRIVE_MODE_NORMAL:
             desired_angle = DRIVING_MODE_NORMAL_GYRO_ANGLE_BIAS;
@@ -793,6 +794,7 @@ int main(void) {
             }
           break;
         }
+        */
         if(ABS(desired_angle-driving_mode_current_angle) <= 0.001){
           driving_mode_current_angle=desired_angle;
         }
@@ -800,16 +802,36 @@ int main(void) {
         else if(desired_angle < driving_mode_current_angle) driving_mode_current_angle-=0.01;
 
 
-        float delta_angle = 0-driving_mode_current_angle;
-        if(delta_angle>0.1) throttle+=delta_angle*THROTTLE_ANGLE_ERROR_GAIN;//0.05;
-        if(delta_angle<0.1) throttle-=delta_angle*THROTTLE_ANGLE_ERROR_GAIN;//0.05;
-        throttle = CLAMP(throttle,-30,30);
+        float delta_angle = mapped_angle-((float)0);
+
+        if(hub_speed_kmh>0){ // we are going forward
+          if(delta_angle > (float)0.1){
+            throttle+=delta_angle*THROTTLE_ANGLE_ERROR_GAIN;//0.05; // add more speed
+          }
+          else if(delta_angle <-1){
+            throttle+=delta_angle*THROTTLE_ANGLE_ERROR_GAIN;//0.05; // remove speed
+          }
+        }
+        else{
+          if(delta_angle < -(float)0.1){
+            throttle+=delta_angle*THROTTLE_ANGLE_ERROR_GAIN;//0.05; // add more speed
+          }
+          else if(delta_angle > 1){
+            throttle+=delta_angle*THROTTLE_ANGLE_ERROR_GAIN;//0.05; // remove speed
+          }          
+        }
+
+
+
+        throttle = CLAMP(throttle,-40,40);
 
 
         motor_pwms += stabilityPDControl(5,mapped_angle , driving_mode_current_angle, Kp, Kd);
+        motor_pwms+=(int16_t)roundf(speed_control_acceleration);
         motor_pwms = CLAMP(motor_pwms, -FlashContent.HoverboardPWMLimit, FlashContent.HoverboardPWMLimit); // Limit max output from control
         
-        int16_t t_motor_pwm = (int16_t)roundf(motor_pwms)+(int16_t)roundf(speed_control_acceleration);
+        int16_t t_motor_pwm = (int16_t)roundf(motor_pwms);//+(int16_t)roundf(speed_control_acceleration);
+
         
 
         t_motor_pwm = CLAMP(t_motor_pwm,-FlashContent.HoverboardPWMLimit, FlashContent.HoverboardPWMLimit);
